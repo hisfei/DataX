@@ -5,39 +5,48 @@ import com.alibaba.datax.common.element.Record;
 public class DorisCsvCodec extends DorisBaseCodec implements DorisCodec {
 
     private static final long serialVersionUID = 1L;
-
     private final String columnSeparator;
 
-    public DorisCsvCodec ( String sp) {
+    public DorisCsvCodec(String sp) {
         this.columnSeparator = DelimiterParser.parse(sp, "\t");
     }
 
     @Override
-     public String codec( Record row) {
-        StringBuilder sb = new StringBuilder();
+    public String codec(Record row) {
+        StringBuilder sb = new StringBuilder(Math.max(64, row.getColumnNumber() * 16));
         for (int i = 0; i < row.getColumnNumber(); i++) {
             String value = convertionField(row.getColumn(i));
             if (value == null) {
                 sb.append("\\N");
             } else {
-                // 只转义 会破坏格式的字符，不包引号
-                sb.append(escapeValue(value));
+                appendEscaped(sb, value);
             }
-
             if (i < row.getColumnNumber() - 1) {
                 sb.append(columnSeparator);
             }
         }
         return sb.toString();
     }
-    // ==========================================
-    // 转义函数：处理 \n \r \t \  等特殊字符
-    // 不包引号！完全满足你的要求
-    // ==========================================
-    private String escapeValue(String s) {
-        return s.replace("\\", "\\\\")    // 反斜杠必须转义
-                .replace("\n", "\\\\n")     // 换行
-                .replace("\r", "\\\\r")     // 回车
-                .replace("\t", "\\\\t");    // 制表符
+
+    private void appendEscaped(StringBuilder sb, String s) {
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            switch (ch) {
+                case '\\':
+                    sb.append("\\\\");
+                    break;
+                case '\n':
+                    sb.append("\\\\n");
+                    break;
+                case '\r':
+                    sb.append("\\\\r");
+                    break;
+                case '\t':
+                    sb.append("\\\\t");
+                    break;
+                default:
+                    sb.append(ch);
+            }
+        }
     }
 }
