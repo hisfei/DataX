@@ -190,7 +190,26 @@ public class MongoDBReader extends Reader {
         Object plainObj = bsonValueToPlainObject(list);
         return JSON.toJSONString(plainObj);
     }
-
+    /**
+     * 安全地将分片边界值转为 MongoDB 查询所需的类型。
+     * 如果 isObjectId=true 且 bound 是合法的 24 位 hex 字符串，则转为 ObjectId；
+     * 否则直接返回 bound 的字符串形式，不强行转换，避免 ClassCastException。
+     */
+    private static Object safeBoundValue(Object bound, boolean isObjectId) {
+        if (bound == null) {
+            return null;
+        }
+        if (isObjectId) {
+            String str = bound.toString();
+            // 只有确认为 24 位合法 hex 字符串才转 ObjectId
+            if (str.matches("^[0-9a-fA-F]{24}$")) {
+                return new ObjectId(str);
+            }
+            // 不是合法 hex，说明 _id 实际不是 ObjectId 类型，直接用原值
+            return str;
+        }
+        return bound;
+    }
     /**
      * 安全地将任意 BSON 值转为 String。
      * 解决：Document.getString() 内部强转 (String)get(key)，遇到 ObjectId 等非 String 类型会抛 ClassCastException。
@@ -452,13 +471,14 @@ public class MongoDBReader extends Reader {
             Document filter = new Document();
             if (lowerBound.equals("min")) {
                 if (!upperBound.equals("max")) {
-                    filter.append(KeyConstant.MONGO_PRIMARY_ID, new Document("$lt", isObjectId ? new ObjectId(upperBound.toString()) : upperBound));
+                    filter.append(KeyConstant.MONGO_PRIMARY_ID, new Document("$lt", safeBoundValue(upperBound, isObjectId)));
                 }
             } else if (upperBound.equals("max")) {
-                filter.append(KeyConstant.MONGO_PRIMARY_ID, new Document("$gte", isObjectId ? new ObjectId(lowerBound.toString()) : lowerBound));
+                filter.append(KeyConstant.MONGO_PRIMARY_ID, new Document("$gte", safeBoundValue(lowerBound, isObjectId)));
             } else {
-                filter.append(KeyConstant.MONGO_PRIMARY_ID, new Document("$gte", isObjectId ? new ObjectId(lowerBound.toString()) : lowerBound).append("$lt", isObjectId ? new ObjectId(upperBound.toString()) : upperBound));
-            }
+                filter.append(KeyConstant.MONGO_PRIMARY_ID,
+                        new Document("$gte", safeBoundValue(lowerBound, isObjectId))
+                                .append("$lt", safeBoundValue(upperBound, isObjectId)));            }
             if (!Strings.isNullOrEmpty(query)) {
                 Document queryFilter = Document.parse(query);
                 filter = new Document("$and", Arrays.asList(filter, queryFilter));
